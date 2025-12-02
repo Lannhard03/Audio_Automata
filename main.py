@@ -37,19 +37,41 @@ def update_automata(cells_1, cells_2, bass_intensity, alive_threshold):
 
     #neigh_1 = signal.convolve2d(cells_1, neigh_ker_1, mode='same', boundary='wrap')
     #neigh_2 = signal.convolve2d(cells_2, neigh_ker_2, mode='same', boundary='wrap')
+    #Interaction: Eating
+    eating = neigh_2 * neigh_1*(neigh_2 >= 0.5)
+    cells_2 += 0.05*eating
+    cells_1 -= 0.2*eating
+
+    np.clip(cells_1, 0, 1, out=cells_1)
+    np.clip(cells_2, 0, 1, out=cells_2)
+    alive_1 = (cells_1 >= alive_threshold)
+    alive_2 = (cells_2 >= alive_threshold)
+
+    neigh_1 = signal.convolve2d(cells_1, neigh_ker_1, mode='same', boundary='wrap')
+    neigh_2 = signal.convolve2d(cells_2, neigh_ker_2, mode='same', boundary='wrap')
+
 
     #Cell 1: Reproduction, overpopulation
-    cells_1 -= (alive_1)*(neigh_1 >= 0)*(1/40*1/2*neigh_1) #Overpopulation
-    cells_1 += (np.invert(alive_1))*(neigh_1 >= 3)*(neigh_1 <= 5)*(1/2*neigh_1) #Reproduction
-    cells_1 += 0.5*(np.invert(alive_1))*(neigh_1 <= 1)*(noise >= 0.9) #Spawning from nothing
+    cells_1 -= (alive_1)*(neigh_1 >= 6)*(1/3*1/2*neigh_1) #Overpopulation
+    cells_1 -= (np.invert(alive_1))*(neigh_1 >= 6)*(1/5*1/2*neigh_1)
+
+    cells_1 += (alive_1)*(neigh_1 >= 3)*(neigh_1 <= 5)*(2/6*neigh_1) #Reproduction
+    cells_1 += (np.invert(alive_1))*(neigh_1 >= 3)*(neigh_1 <= 5)*(5/6*neigh_1)
+    cells_1 -= 0.5*(alive_1)*(neigh_1 <= 1.5) #Lonliness
 
 
     #Rules for 2:
-    cells_2 -= (alive_2)*(neigh_2 >= 7)*(1/40*1/2*neigh_2) #Overpopulation
-    cells_2 += (np.invert(alive_2))*(neigh_2 >= 6)*(neigh_2 <= 7)*(1/9*1/2*neigh_2) #Reproduction
+    cells_2 -= (alive_2)*(neigh_2 >= 3)*(1/3*1/2*neigh_2) #Overpopulation
+    cells_2 -= (np.invert(alive_2))*(neigh_1 >= 3)*(1/5*1/2*neigh_2)
+    cells_2 -= (1/4*1/2) #Starvation
 
-    np.clip(cells_1, 0, 1)
-    np.clip(cells_2, 0, 1)
+    cells_2 += (alive_2)*(neigh_2 >= 2)*(neigh_2 <= 3)*(0.1*neigh_2)
+    cells_2 += (np.invert(alive_2))*(neigh_2 >= 2)*(neigh_2 <= 3)*(0.2*neigh_2) #Reproduction
+
+    cells_2 -= 0.5*(alive_2)*(neigh_2 <= 0.5) #Lonliness 
+
+    np.clip(cells_1, 0, 1, out=cells_1)
+    np.clip(cells_2, 0, 1, out=cells_2)
 
     return (cells_1, cells_2)
 
@@ -66,8 +88,9 @@ def main():
     clock = pygame.time.Clock()
     running = True
 
-    next_cells_1 = 1/100*np.random.randint(0, 100, (automata_width, automata_height))
-    next_cells_2 = 1/100*np.random.randint(0, 100, (automata_width, automata_height))
+    next_cells_1 = 1/200*np.random.randint(0, 100, (automata_width, automata_height))
+    next_cells_2 = 0.000*np.random.randint(0, 100, (automata_width, automata_height))
+    #next_cells_2 = np.zeros((automata_width, automata_height))
     cells_1 = np.zeros((automata_width, automata_height))
     cells_2 = np.zeros((automata_width, automata_height))
     smooth_cells_1 = np.zeros((automata_width, automata_height))
@@ -86,7 +109,7 @@ def main():
                 pos = pygame.mouse.get_pos()
                 aut_x = int((pos[0]*automata_width) / WIDHT)
                 aut_y = int((pos[1]*automata_height) / HEIGHT)
-                cells_1[aut_x-3:aut_x+3, aut_y-3:aut_y+3] = np.ones((6, 6))
+                cells_2[aut_x-3:aut_x+3, aut_y-3:aut_y+3] = np.ones((6, 6))
 
         bass_intensity = 3*(np.sin(2*3.14*(current_frame/frame_rate)) > 0.9)
 
@@ -97,20 +120,20 @@ def main():
                                                            bass_intensity,
                                                            alive_threshold)
 
-        #interp = ((current_frame % cell_update_rate)/cell_update_rate)
-        interp = 0
+        interp = ((current_frame % cell_update_rate)/cell_update_rate)
+        #interp = 0
         interp_cells_1 = interp*next_cells_1 + (1-interp)*cells_1
         interp_cells_2 = interp*next_cells_2 + (1-interp)*cells_2
         alive_1 = (interp_cells_1 >= alive_threshold)
         alive_2 = (interp_cells_2 >= alive_threshold)
 
         gaussian_filter(interp_cells_1, sigma = 0, output = smooth_cells_1)
-        gaussian_filter(alive_2, sigma = 0, output = smooth_cells_2)
+        gaussian_filter(interp_cells_2, sigma = 0, output = smooth_cells_2)
 
         #smooth_cells_1 = signal.convolve2d(cells_1, smooth_ker, mode='same', boundary='wrap')
         #smooth_cells_2 = signal.convolve2d(cells_2, smooth_ker, mode='same', boundary='wrap')
 
-        rgb_arr = np.dstack([0*smooth_cells_2, 20*smooth_cells_1, 155*smooth_cells_1])
+        rgb_arr = np.dstack([200*smooth_cells_2, 20*smooth_cells_1, 155*smooth_cells_1])
         rgb_surf = pygame.surfarray.make_surface(rgb_arr)
 
         screen.fill((0, 0, 0))
