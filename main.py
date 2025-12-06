@@ -3,82 +3,83 @@ import sys
 import numpy as np
 from scipy import signal
 from scipy.ndimage import gaussian_filter
+import sounddevice as sd
 
 
-def update_automata(cells_1, cells_2, bass_intensity, alive_threshold):
-    noise = 1/100*np.random.randint(0, 100, (256, 256))
+class Automata:
+    def __init__(self, width, height):
+        self.alive_threshold = 0.5
 
-    alive_1 = (cells_1 >= alive_threshold)
-    alive_2 = (cells_2 >= alive_threshold)
+        self.overpop_threshold = 6
+        self.overpop_dead_prm = 0
+        self.overpop_alive_prm = 0
 
-    # Update cells with a kernel based method?
-    # Game of life: Compute neighbour sum using kernel
-    neigh_ker_1 = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    neigh_ker_2 = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    sobel_y = np.array([[1, 2 , 0, -2 , -1],
-                        [4, 8 , 0, -8 , -4],
-                        [6, 12, 0, -12, -6],
-                        [4, 8 , 0, -8 , -4],
-                        [1, 2 , 0, -2 , -1]])
-    sobel_x = np.transpose(sobel_y)
+        self.repop_min = 6
+        self.repop_max = 6
+        self.repop_dead_prm = 0
+        self.repop_alive_prm = 0
 
-    neigh_1 = signal.convolve2d(cells_1, neigh_ker_1, mode='same', boundary='wrap')
-    neigh_2 = signal.convolve2d(cells_2, neigh_ker_2, mode='same', boundary='wrap')
+        self.lonliness_threshhold = 0
+        self.lonliness_prm = 0
 
-    #Idea: Cells 2 can attack, reproduce slightly less
-    #For now bass_intensity is a value from 0-2
-    #2 eats 1:
-    attack = 4 - bass_intensity
+        self.starvation_prm = 0
 
-    # If a cell1 is alive, each neigh_2 around it will hurt it.
-    #cells_1 -= (alive_1)*(1/40*1/2*neigh_2)
-    #alive_1 = (cells_1 >= alive_threshold)
-    #cells_2 = cells_2 + (neigh_2 < 10)*(neigh_1 >= 10)*(neigh_2 >= attack)
+        self.next_cells = 1/100*np.random.randint(0, 100, (width, height))
+        self.cells = np.zeros((width, height))
 
-    #neigh_1 = signal.convolve2d(cells_1, neigh_ker_1, mode='same', boundary='wrap')
-    #neigh_2 = signal.convolve2d(cells_2, neigh_ker_2, mode='same', boundary='wrap')
-    #Interaction: Eating
-    eating = neigh_2 * neigh_1*(neigh_2 >= 0.5)
-    cells_2 += 0.05*eating
-    cells_1 -= 0.2*eating
-
-    np.clip(cells_1, 0, 1, out=cells_1)
-    np.clip(cells_2, 0, 1, out=cells_2)
-    alive_1 = (cells_1 >= alive_threshold)
-    alive_2 = (cells_2 >= alive_threshold)
-
-    neigh_1 = signal.convolve2d(cells_1, neigh_ker_1, mode='same', boundary='wrap')
-    neigh_2 = signal.convolve2d(cells_2, neigh_ker_2, mode='same', boundary='wrap')
+        self.neigh_ker = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+        self.update_cell_states()
 
 
-    #Cell 1: Reproduction, overpopulation
-    cells_1 -= (alive_1)*(neigh_1 >= 6)*(1/3*1/2*neigh_1) #Overpopulation
-    cells_1 -= (np.invert(alive_1))*(neigh_1 >= 6)*(1/5*1/2*neigh_1)
-
-    cells_1 += (alive_1)*(neigh_1 >= 3)*(neigh_1 <= 5)*(2/6*neigh_1) #Reproduction
-    cells_1 += (np.invert(alive_1))*(neigh_1 >= 3)*(neigh_1 <= 5)*(5/6*neigh_1)
-    cells_1 -= 0.5*(alive_1)*(neigh_1 <= 1.5) #Lonliness
+    def update_cell_states(self):
+        np.clip(self.next_cells, 0, 1, out=self.next_cells)
+        self.alive = (self.next_cells >= self.alive_threshold)
+        self.neigh = signal.convolve2d(self.next_cells, self.neigh_ker, mode='same', boundary='wrap')
 
 
-    #Rules for 2:
-    cells_2 -= (alive_2)*(neigh_2 >= 3)*(1/3*1/2*neigh_2) #Overpopulation
-    cells_2 -= (np.invert(alive_2))*(neigh_1 >= 3)*(1/5*1/2*neigh_2)
-    cells_2 -= (1/4*1/2) #Starvation
+    def update_cells(self):
+        self.next_cells = self.cells
 
-    cells_2 += (alive_2)*(neigh_2 >= 2)*(neigh_2 <= 3)*(0.1*neigh_2)
-    cells_2 += (np.invert(alive_2))*(neigh_2 >= 2)*(neigh_2 <= 3)*(0.2*neigh_2) #Reproduction
+        #Overpopulation
+        overpopulated = (self.neigh >= self.overpop_threshold)
+        self.next_cells -= (self.alive)*overpopulated*(self.overpop_alive_prm*self.neigh)
+        self.next_cells -= (np.invert(self.alive))*overpopulated*(self.overpop_dead_prm*self.neigh)
 
-    cells_2 -= 0.5*(alive_2)*(neigh_2 <= 0.5) #Lonliness 
+        #Reproduction
+        repop = (self.neigh >= self.repop_min)*(self.neigh <= self.repop_max)
+        self.next_cells += (self.alive)*repop*(self.repop_alive_prm*self.neigh)
+        self.next_cells += (np.invert(self.alive))*repop*(self.repop_dead_prm*self.neigh)
 
-    np.clip(cells_1, 0, 1, out=cells_1)
-    np.clip(cells_2, 0, 1, out=cells_2)
+        #Lonliness
+        self.next_cells -= self.lonliness_prm*(self.alive)*(self.neigh <= self.lonliness_threshhold)
 
-    return (cells_1, cells_2)
+        #Starvation
+        self.next_cells -= self.starvation_prm
+
+
+        self.update_cell_states()
+        self.cells, self.next_cells = self.next_cells, self.cells
+
+#Modifiers
+class PredatorPrey:
+    def __init__(self, predator, prey):
+        self.pred = predator
+        self.prey = prey
+        self.eat_threshold = 0.5
+        self.gain_parameter = 0.05
+        self.loss_parameter = 0.2
+
+    def apply(self):
+        eating = self.pred.neigh * self.prey.neigh * (self.prey.neigh >= self.eat_threshold) 
+        self.pred.next_cells += self.gain_parameter*eating
+        self.prey.next_cells -= self.loss_parameter*eating
+
+        self.pred.update_cell_states()
+        self.prey.update_cell_states()
 
 
 def main():
     pygame.init()
-
     WIDHT, HEIGHT = 800, 800
     automata_width, automata_height = 256, 256
     frame_rate = 60
@@ -88,18 +89,52 @@ def main():
     clock = pygame.time.Clock()
     running = True
 
-    next_cells_1 = 1/200*np.random.randint(0, 100, (automata_width, automata_height))
-    next_cells_2 = 0.000*np.random.randint(0, 100, (automata_width, automata_height))
-    #next_cells_2 = np.zeros((automata_width, automata_height))
-    cells_1 = np.zeros((automata_width, automata_height))
-    cells_2 = np.zeros((automata_width, automata_height))
+    aut_1 = Automata(automata_width, automata_height)
+    aut_1.alive_threshold = 1/2
+
+    aut_1.overpop_threshold = 6
+    aut_1.overpop_dead_prm = 1/6
+    aut_1.overpop_alive_prm = 1/10
+
+    aut_1.repop_min = 3
+    aut_1.repop_max = 5
+    aut_1.repop_dead_prm = 5/6
+    aut_1.repop_alive_prm = 1/3
+
+    aut_1.lonliness_threshhold = 10
+    aut_1.lonliness_prm = 1/2
+
+    aut_1.starvation_prm = 0
+
+
+    aut_2 = Automata(automata_width, automata_height)
+    aut_2.alive_threshold = 1/2
+
+    aut_2.overpop_threshold = 3
+    aut_2.overpop_dead_prm = 1/6
+    aut_2.overpop_alive_prm = 1/10
+
+    aut_2.repop_min = 2
+    aut_2.repop_max = 3
+    aut_2.repop_dead_prm = 0.2
+    aut_2.repop_alive_prm = 0.1
+
+    aut_2.lonliness_threshhold = 10
+    aut_2.lonliness_prm = 1/2
+
+    aut_2.starvation_prm = 1/16
+
+    pred_prey = PredatorPrey(aut_2, aut_1)
+
+    aut_2.next_cells = aut_2.cells #Hack to set next_cells to zero
+    aut_2.update_cell_states()
+
     smooth_cells_1 = np.zeros((automata_width, automata_height))
     smooth_cells_2 = np.zeros((automata_width, automata_height))
 
     cell_update_rate = frame_rate/20
 
     current_frame = 0
-    alive_threshold = 0.5
     # Main loop
     while running:
         for event in pygame.event.get():
@@ -109,31 +144,24 @@ def main():
                 pos = pygame.mouse.get_pos()
                 aut_x = int((pos[0]*automata_width) / WIDHT)
                 aut_y = int((pos[1]*automata_height) / HEIGHT)
-                cells_2[aut_x-3:aut_x+3, aut_y-3:aut_y+3] = np.ones((6, 6))
+                aut_2.next_cells[aut_x-3:aut_x+3, aut_y-3:aut_y+3] = np.ones((6, 6))
 
         bass_intensity = 3*(np.sin(2*3.14*(current_frame/frame_rate)) > 0.9)
 
         if current_frame % cell_update_rate == 0:
-            cells_1, next_cells_1 = next_cells_1, cells_1
-            cells_2, next_cells_2 = next_cells_2, cells_2
-            (next_cells_1, next_cells_2) = update_automata(cells_1, cells_2,
-                                                           bass_intensity,
-                                                           alive_threshold)
+            pred_prey.apply()
+            aut_1.update_cells()
+            aut_2.update_cells()
+
 
         interp = ((current_frame % cell_update_rate)/cell_update_rate)
-        #interp = 0
-        interp_cells_1 = interp*next_cells_1 + (1-interp)*cells_1
-        interp_cells_2 = interp*next_cells_2 + (1-interp)*cells_2
-        alive_1 = (interp_cells_1 >= alive_threshold)
-        alive_2 = (interp_cells_2 >= alive_threshold)
+        interp_cells_1 = interp*aut_1.next_cells + (1-interp)*aut_1.cells
+        interp_cells_2 = interp*aut_2.next_cells + (1-interp)*aut_2.cells
 
         gaussian_filter(interp_cells_1, sigma = 0, output = smooth_cells_1)
         gaussian_filter(interp_cells_2, sigma = 0, output = smooth_cells_2)
 
-        #smooth_cells_1 = signal.convolve2d(cells_1, smooth_ker, mode='same', boundary='wrap')
-        #smooth_cells_2 = signal.convolve2d(cells_2, smooth_ker, mode='same', boundary='wrap')
-
-        rgb_arr = np.dstack([200*smooth_cells_2, 20*smooth_cells_1, 155*smooth_cells_1])
+        rgb_arr = np.dstack([200*smooth_cells_2, 50*smooth_cells_1, 155*smooth_cells_1])
         rgb_surf = pygame.surfarray.make_surface(rgb_arr)
 
         screen.fill((0, 0, 0))

@@ -9,4 +9,5 @@ dependencies = [
     "pygame",
     "sounddevice",
     "scipy",
+    "sounddevice"
 ]
