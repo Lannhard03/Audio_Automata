@@ -1,0 +1,13 @@
+[project]
+name = "audio-automata-py"
+version = "0.1.0"
+description = "Audio-driven cellular automata"
+requires-python = ">=3.11"
+
+dependencies = [
+    "numpy",
+    "pygame",
+    "sounddevice",
+    "scipy",
+    "soundfile"
+]
