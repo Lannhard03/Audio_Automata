@@ -119,7 +119,7 @@ def main():
     aut_1 = Automata(automata_width, automata_height)
     aut_1.alive_threshold = 1/2
 
-    aut_1.overpop_threshold = 6
+    aut_1.overpop_threshold = 4
     aut_1.overpop_dead_prm = 1/10
     aut_1.overpop_alive_prm = 1/15
 
@@ -131,13 +131,13 @@ def main():
     aut_1.lonliness_threshhold = 10
     aut_1.lonliness_prm = 1/2
 
-    aut_1.starvation_prm = 0
+    aut_1.starvation_prm = 1/10
 
 
     aut_2 = Automata(automata_width, automata_height)
     aut_2.alive_threshold = 1/2
 
-    aut_2.overpop_threshold = 3
+    aut_2.overpop_threshold = 4
     aut_2.overpop_dead_prm = 1/6
     aut_2.overpop_alive_prm = 1/10
 

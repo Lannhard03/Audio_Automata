@@ -2,3 +2,5 @@ uv.lock
 .venv/
 audio_automata_py.egg-info/
 .DS_Store
+audio_automata/dboi.png
+audio_automata/src/target
