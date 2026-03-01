@@ -1,5 +1,5 @@
-use wgpu::{SurfaceError, util::{BufferInitDescriptor, DeviceExt}};
 use rand::Rng;
+
 use anyhow::Result;
 
 #[repr(C)]
@@ -51,26 +51,22 @@ struct ComputeParams {
 }
 
 //Convenience wrapper for buffer to texture conversion
-pub struct ComputeTexture {
+pub struct Texture {
     pub width: u32,
     pub height: u32,
     pub texture_bind_group: wgpu::BindGroup,
     pub texture_bind_group_layout: wgpu::BindGroupLayout,
-    pub compute_bind_group_even: wgpu::BindGroup,
-    pub compute_bind_group_odd: wgpu::BindGroup,
-    pub compute_bind_group_layout: wgpu::BindGroupLayout,
-    texture: wgpu::Texture,
-    view: wgpu::TextureView,
-    sampler: wgpu::Sampler,
-    size: wgpu::Extent3d,
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub sampler: wgpu::Sampler,
+    pub size: wgpu::Extent3d,
 }
 
-impl ComputeTexture {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32) -> Result<Self> {
+impl Texture {
+    pub fn new(device: &wgpu::Device, _queue: &wgpu::Queue, width: u32, height: u32) -> Result<Self> {
         let mut rng = rand::rng();
         let grid_width = width;
         let grid_height = height;
-        let compute_prm: &[u32] = &[width, height];
         let input_data: Vec<f32> = (0..(grid_height*grid_width))
                                    .map(|_x| rng.random_range(0..2) as f32).collect(); 
                                     //faster to use a uniform dist,
@@ -102,28 +98,7 @@ impl ComputeTexture {
             }
         );
 
-        let diffuse_bytes = include_bytes!("../dboi.png");
-        let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
-        let diffuse_rgba = diffuse_image.to_rgba8();
 
-        queue.write_texture(
-            // Tells wgpu where to copy the pixel data
-            wgpu::TexelCopyTextureInfo {
-                texture: &diffuse_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            // The actual pixel data
-            &diffuse_rgba,
-            // The layout of the texture
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * grid_width),
-                rows_per_image: Some(grid_height),
-            },
-            texture_size,
-        );
 
         let diffuse_texture_view = diffuse_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let diffuse_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -179,134 +154,40 @@ impl ComputeTexture {
         );
 
 
-
-        let even_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("input"),
-            contents: bytemuck::cast_slice(&input_data),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
-        });
-
-        let odd_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("output"),
-            size: even_buffer.size(),
-            usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        let prm_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("parameters"),
-            contents: bytemuck::cast_slice(compute_prm),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE, //maybe don't need
-                                                                               //both these usages?
-        });
-
-        let compute_bind_group_layout = 
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                        entries: &[
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Buffer { 
-                                    ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                    has_dynamic_offset: false, //Maybe should be true?
-                                    min_binding_size: None,
-                                },
-                                count: None,
-                            },                   
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 1,
-                                visibility: wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Buffer { 
-                                    ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                    has_dynamic_offset: false, //Maybe should be true?
-                                    min_binding_size: None,
-                                },
-                                count: None,
-                            },
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 2,
-                                visibility: wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Buffer { 
-                                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                    has_dynamic_offset: false, //Maybe should be true?
-                                    min_binding_size: None,
-                                },
-                                count: None,
-                            },
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 3,
-                                visibility: wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::StorageTexture { 
-                                    access: wgpu::StorageTextureAccess::WriteOnly, 
-                                    format: wgpu::TextureFormat::Rgba8Unorm, 
-                                    view_dimension: wgpu::TextureViewDimension::D2, 
-                                },
-                                count: None,
-                            },
-                        ],
-                        label: Some("compute_bind_group_layout"),
-                    });
-
-        //Binding 0 = input, bindning 1 = output
-        let compute_bind_group_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &compute_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: even_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: odd_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: prm_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
-                },
-            ],
-        });
-
-        let compute_bind_group_odd = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &compute_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: odd_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: even_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: prm_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
-                },
-            ],
-        });
-
-
         return Ok(Self {
             width,
             height,
             texture_bind_group: diffuse_bind_group,
             texture_bind_group_layout,
-            compute_bind_group_even,
-            compute_bind_group_odd,
-            compute_bind_group_layout,
             texture: diffuse_texture,
             view: diffuse_texture_view,
             sampler: diffuse_sampler,
             size: texture_size,
         });
+    }
+
+    fn _test_texture(&self, queue: &wgpu::Queue) {
+        let diffuse_bytes = include_bytes!("../dboi.png");
+        let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
+        let diffuse_rgba = diffuse_image.to_rgba8();
+
+        queue.write_texture(
+            // Tells wgpu where to copy the pixel data
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            // The actual pixel data
+            &diffuse_rgba,
+            // The layout of the texture
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * self.width),
+                rows_per_image: Some(self.height),
+            },
+            self.size,
+        );
     }
 }

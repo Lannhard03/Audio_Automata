@@ -147,13 +147,13 @@ def main():
     aut_2.repop_alive_prm = 0.1
 
     aut_2.lonliness_threshhold = 10
-    aut_2.lonliness_prm = 1/3
+    aut_2.lonliness_prm = 1/2
 
-    aut_2.starvation_prm = 1/24
+    aut_2.starvation_prm = 1/12
 
     pred_prey = PredatorPrey(aut_2, aut_1)
-    pred_prey.gain_parameter = 0.025
-    pred_prey.loss_parameter = 0.05
+    pred_prey.gain_parameter = 0.07
+    pred_prey.loss_parameter = 0.1
 
 
     aut_2.next_cells = aut_2.cells #Hack to set next_cells to zero
@@ -190,9 +190,7 @@ def main():
             raise sd.CallbackStop()
         playback_frame += chunksize
 
-    stream = sd.OutputStream(
-        samplerate=fs, device=2, channels=data.shape[1],
-        callback=callback, finished_callback=event.set)
+    stream = sd.OutputStream(samplerate=fs, device=1, channels=data.shape[1], callback=callback, finished_callback=event.set)
 
     with stream:
         #event.wait()
@@ -216,7 +214,7 @@ def main():
                 bass_freq_cutoff = 100
                 bass_energy = np.sqrt(np.mean(np.abs(freq[0:bass_freq_cutoff])**2))
                 pred_prey.gain_parameter = 0.0175 + up_beat*(100)
-                aut_1.overpop_alive_prm = 1/15 + (bass_energy/30)**4
+                aut_1.overpop_alive_prm = 1/150 + (bass_energy/30)**4
                 print("bass energy:", bass_energy)
 
 

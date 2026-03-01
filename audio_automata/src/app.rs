@@ -3,10 +3,18 @@ use std::{sync::Arc, time::{Instant}};
 use wgpu::{SurfaceError, util::{DeviceExt}};
 
 use winit::{
-    application::ApplicationHandler, dpi::PhysicalPosition, event::*, event_loop::{ActiveEventLoop}, keyboard::{KeyCode, PhysicalKey}, window::Window
+    application::ApplicationHandler, dpi::{PhysicalPosition, PhysicalSize}, event::*, event_loop::ActiveEventLoop, keyboard::{KeyCode, PhysicalKey}, window::Window
 };
 
-use crate::data::{ComputeTexture, Vertex};
+use crate::{
+    automata::{
+        automata_rule::AutomataRule, 
+        automata_state::AutomataState, 
+        automata_renderer::AutomataRenderer,
+        Automata
+    }, 
+    data::{Vertex}
+};
 
 // This will store the state of our "renderer"
 pub struct State {
@@ -16,12 +24,13 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
-    compute_pipeline: wgpu::ComputePipeline,
+    //compute_pipeline: wgpu::ComputePipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     clear_color: wgpu::Color,
-    compute_texture: ComputeTexture,
+    automata: Automata,
+    automata_renderer: AutomataRenderer,
     even_frame: bool,
     window: Arc<Window>,
 }
@@ -30,6 +39,7 @@ impl State {
     // We don't need this to be async right now,
     // but we will in the next tutorial
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+        let _ = window.request_inner_size(PhysicalSize::new(1600, 1600));
         let size = window.inner_size();
         //Instance: used to create other "GPU objects"
         //Surface: the GPU draws too this
@@ -86,7 +96,19 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
-        let compute_texture = ComputeTexture::new(&device, &queue, 10, 10).unwrap();
+
+        let aut_width = 1024;
+        let aut_height = 1024;
+        let state = AutomataState::new(&device, aut_width, aut_height);
+        let states = vec![state];
+        let mut rules: Vec<AutomataRule> = vec![];
+        rules.push(AutomataRule::conway_rule(&states, 0, &device));
+        let automata = Automata {
+            states,
+            rules,
+        };
+
+        let automata_renderer = AutomataRenderer::new(&automata.states, aut_width, aut_height, &device, &queue);
 
         //OBS: We never "apply" the surface config to the surface here
 
@@ -101,7 +123,7 @@ impl State {
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline layout"),
-            bind_group_layouts: &[&compute_texture.texture_bind_group_layout],
+            bind_group_layouts: &[&automata_renderer.texture_bind_group_layout],
             push_constant_ranges: &[], //What do these two do?? Something with buffers?
         });
 
@@ -168,21 +190,6 @@ impl State {
 
         let num_indices = crate::data::INDICES.len() as u32;
 
-        let compute_shader = device.create_shader_module(wgpu::include_wgsl!("automata.wgsl"));
-        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Compute Pipeline layout"),
-            bind_group_layouts: &[&compute_texture.compute_bind_group_layout],
-            push_constant_ranges: &[], //What does this one do?? Something with buffers?
-        });
-
-        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Compute Pipeline"),
-            layout: Some(&compute_pipeline_layout),
-            module: &compute_shader,
-            entry_point: Some("cp_main"), //Correct name?
-            compilation_options: Default::default(),
-            cache: Default::default(),
-        });
 
         
         Ok(Self {
@@ -192,14 +199,16 @@ impl State {
             config,
             is_surface_configured: false,
             render_pipeline,
-            compute_pipeline,
+            //compute_pipeline,
             clear_color,
             window,
             vertex_buffer,
             index_buffer,
             num_indices,
-            compute_texture,
+            //compute_texture,
             even_frame: true,
+            automata,
+            automata_renderer,
         })
     }
 
@@ -222,7 +231,6 @@ impl State {
         if !self.is_surface_configured {
             return Ok(());
         }
-
 
 
         let output = self.surface.get_current_texture()?;
@@ -250,7 +258,7 @@ impl State {
                 timestamp_writes: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.compute_texture.texture_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.automata_renderer.texture_bind_group, &[]);
             //Use a slice for the buffer as the buffer could contain more than
             //one "set" of data.
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
@@ -287,40 +295,18 @@ impl State {
     }
 
     fn update(&mut self) {
-
-        //Compute
-        let num_dispatches_x = self.compute_texture.width.div_ceil(16) as u32;
-        let num_dispatches_y = self.compute_texture.height.div_ceil(16) as u32;
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-           label: Some("Compute Encoder"),
-        });
-
-        {
-           let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-           compute_pass.set_pipeline(&self.compute_pipeline);
-           if self.even_frame {
-               compute_pass.set_bind_group(0, &self.compute_texture.compute_bind_group_even, &[]);
-               self.even_frame = false;
-           } else {
-               compute_pass.set_bind_group(0, &self.compute_texture.compute_bind_group_odd, &[]);
-               self.even_frame = true;
-           }
-           compute_pass.dispatch_workgroups(num_dispatches_x, num_dispatches_y, 1);
-        }
-        self.queue.submit([encoder.finish()]);
+        self.automata.update(&self.device, &self.queue, self.even_frame);
+        self.automata_renderer.update_texture(&self.device, &self.queue, self.even_frame);
+        self.even_frame = !self.even_frame;
     }
-
 }
-
-
-
-
 
 
 pub struct App {
     state: Option<State>,
     last_render_time: Instant,
 }
+
 
 impl App {
     pub fn new() -> Self {
@@ -359,7 +345,7 @@ impl ApplicationHandler<State> for App {
                 let now = Instant::now();
                 let dt = now - self.last_render_time;
                 if dt.as_millis() >= 30 {
-                    //println!("{}", dt.as_millis());
+                    println!("{}", dt.as_millis());
                     state.update();
                     self.last_render_time = now;
                 }
