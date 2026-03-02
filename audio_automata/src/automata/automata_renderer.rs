@@ -9,7 +9,7 @@ pub struct AutomataRenderer {
     height: u32,
     wg_size: u32,
     pub texture_bind_group: wgpu::BindGroup,
-    pub texture_bind_group_layout: wgpu::BindGroupLayout,
+    //pub texture_bind_group_layout: wgpu::BindGroupLayout,
     pub compute_bindgroup_even: wgpu::BindGroup,
     pub compute_bindgroup_odd: wgpu::BindGroup,
     pub compute_pipeline: wgpu::ComputePipeline,
@@ -18,7 +18,9 @@ pub struct AutomataRenderer {
 impl AutomataRenderer {
     //State should be a list of states,
     //but then I need to understand buffer offsets
-    pub fn new(state: &Vec<AutomataState>, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> AutomataRenderer {
+    pub fn new(state: &Vec<AutomataState>, texture_bindgroup_layout: &wgpu::BindGroupLayout,
+               width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> AutomataRenderer {
+
         let texture_size = wgpu::Extent3d {
             width: width,
             height: height,
@@ -79,34 +81,11 @@ impl AutomataRenderer {
             ..Default::default()
         });
 
-        let texture_bind_group_layout =
-                    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                        entries: &[
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: wgpu::ShaderStages::FRAGMENT,
-                                ty: wgpu::BindingType::Texture {
-                                    multisampled: false,
-                                    view_dimension: wgpu::TextureViewDimension::D2,
-                                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                                },
-                                count: None,
-                            },
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 1,
-                                visibility: wgpu::ShaderStages::FRAGMENT,
-                                // This should match the filterable field of the
-                                // corresponding Texture entry above.
-                                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                                count: None,
-                            },
-                        ],
-                        label: Some("texture_bind_group_layout"),
-                    });
+
 
         let diffuse_bind_group = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                layout: &texture_bind_group_layout,
+                layout: texture_bindgroup_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
@@ -228,7 +207,7 @@ impl AutomataRenderer {
 
         return  AutomataRenderer { 
             texture_bind_group: diffuse_bind_group,
-            texture_bind_group_layout,
+            //texture_bind_group_layout,
             compute_bindgroup_even,
             compute_bindgroup_odd,
             compute_pipeline: pipeline,

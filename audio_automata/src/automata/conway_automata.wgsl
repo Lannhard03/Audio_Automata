@@ -1,4 +1,4 @@
-@group(0) @binding(0) var<storage, read> prm: array<u32>;
+@group(0) @binding(0) var<storage, read_write> prm: array<u32>;
 
 @group(1) @binding(0) var<storage, read_write> cells: array<f32>;
 @group(1) @binding(1) var<storage, read_write> next_cells: array<f32>;
@@ -29,7 +29,8 @@ fn main(
     let top = width*((iy-1+height)%height); 
       
 
-    // a simple copy operation
+    //The parameters are here set to 3, 12, 13. Meaning a "alive" cell with 2 or 3
+    //neighbours survivies, and a "dead" cell with 3 neighbours becomes alive
     let neigh =  cells[left + top     ] +    cells[ix + top] + cells[right + top     ] +
                  cells[left + width*iy] + 10*cells[mid     ] + cells[right + width*iy] +
                  cells[left + bot     ] +    cells[ix + bot] + cells[right + bot     ];

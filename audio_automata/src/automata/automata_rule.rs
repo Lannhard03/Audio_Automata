@@ -3,9 +3,10 @@ use crate::automata::automata_state::AutomataState;
 
 pub struct AutomataRule {
     pipeline: wgpu::ComputePipeline,
+    prm: Vec<u32>,
+    prm_buffer: wgpu::Buffer,
     prm_bindgroup: wgpu::BindGroup,
     prm_bindgroup_layout: wgpu::BindGroupLayout,
-    num_prm: usize,
 }
 
 
@@ -20,32 +21,14 @@ impl AutomataRule {
         return &self.prm_bindgroup_layout;
     }
 
-    pub fn update_prm_bindgroup(&mut self, prm: Vec<u32>, device: &wgpu::Device) {
-        if prm.len() != self.num_prm {
+    pub fn update_prm_bindgroup(&mut self, new_prm: Vec<u32>, queue: &wgpu::Queue) {
+        if new_prm.len() != self.prm.len() {
             print!("Incorrect number of parameters, cannot update!");
             return;
         }
 
-
-        let prm_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                label: Some("parameters"),
-                contents: bytemuck::cast_slice(&prm),
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE, //maybe don't need
-                                                                                   //both these usages?
-            });
-
-        let prm_bindgroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: self.get_prm_bindgroup_layout(),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: prm_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
-        self.prm_bindgroup = prm_bindgroup;
+        self.prm = new_prm;
+        queue.write_buffer(&self.prm_buffer, 0, bytemuck::cast_slice(&self.prm));
     }
 
     fn create_rule(shader_module: wgpu::ShaderModule, states: &Vec<AutomataState>, 
@@ -58,7 +41,7 @@ impl AutomataRule {
                             binding: 0,
                             visibility: wgpu::ShaderStages::COMPUTE,
                             ty: wgpu::BindingType::Buffer { 
-                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                ty: wgpu::BufferBindingType::Storage { read_only: false },
                                 has_dynamic_offset: false, //Maybe should be true?
                                 min_binding_size: None,
                             },
@@ -107,9 +90,10 @@ impl AutomataRule {
 
         return AutomataRule {
             pipeline, 
+            prm_buffer,
             prm_bindgroup, 
             prm_bindgroup_layout,
-            num_prm: prm.len(),
+            prm,
         }
 
 

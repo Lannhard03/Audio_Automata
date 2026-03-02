@@ -17,7 +17,7 @@ use crate::{
 };
 
 // This will store the state of our "renderer"
-pub struct State {
+pub struct GPUState {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -29,13 +29,15 @@ pub struct State {
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     clear_color: wgpu::Color,
-    automata: Automata,
-    automata_renderer: AutomataRenderer,
-    even_frame: bool,
+
+    //In practice will contain a reference to the bindgroup of a automata texturer
+    //which is computed by a automata render
+    texture_bind_group_layout: wgpu::BindGroupLayout,
+
     window: Arc<Window>,
 }
 
-impl State {
+impl GPUState {
     // We don't need this to be async right now,
     // but we will in the next tutorial
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
@@ -97,19 +99,6 @@ impl State {
         };
 
 
-        let aut_width = 1024;
-        let aut_height = 1024;
-        let state = AutomataState::new(&device, aut_width, aut_height);
-        let states = vec![state];
-        let mut rules: Vec<AutomataRule> = vec![];
-        rules.push(AutomataRule::conway_rule(&states, 0, &device));
-        let automata = Automata {
-            states,
-            rules,
-        };
-
-        let automata_renderer = AutomataRenderer::new(&automata.states, aut_width, aut_height, &device, &queue);
-
         //OBS: We never "apply" the surface config to the surface here
 
         let clear_color = wgpu::Color {
@@ -119,11 +108,37 @@ impl State {
                             a: 1.0,
                           };
 
+        let texture_bind_group_layout =
+                    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        entries: &[
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 0,
+                                visibility: wgpu::ShaderStages::FRAGMENT,
+                                ty: wgpu::BindingType::Texture {
+                                    multisampled: false,
+                                    view_dimension: wgpu::TextureViewDimension::D2,
+                                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                },
+                                count: None,
+                            },
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 1,
+                                visibility: wgpu::ShaderStages::FRAGMENT,
+                                // This should match the filterable field of the
+                                // corresponding Texture entry above.
+                                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                                count: None,
+                            },
+                        ],
+                        label: Some("texture_bind_group_layout"),
+                    });
+
+
         //Begin setup of render pipeline
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline layout"),
-            bind_group_layouts: &[&automata_renderer.texture_bind_group_layout],
+            bind_group_layouts: &[&texture_bind_group_layout],
             push_constant_ranges: &[], //What do these two do?? Something with buffers?
         });
 
@@ -199,16 +214,12 @@ impl State {
             config,
             is_surface_configured: false,
             render_pipeline,
-            //compute_pipeline,
             clear_color,
             window,
             vertex_buffer,
             index_buffer,
             num_indices,
-            //compute_texture,
-            even_frame: true,
-            automata,
-            automata_renderer,
+            texture_bind_group_layout,
         })
     }
 
@@ -221,7 +232,7 @@ impl State {
         }
     }
     
-    pub fn render(&mut self) -> Result<(), SurfaceError> {
+    pub fn render(&mut self, texture_bindgroup: &wgpu::BindGroup) -> Result<(), SurfaceError> {
         //OBS: state.render() is called from window.request_redraw()
         //creating a "loop".
         self.window.request_redraw();
@@ -258,7 +269,7 @@ impl State {
                 timestamp_writes: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.automata_renderer.texture_bind_group, &[]);
+            render_pass.set_bind_group(0, texture_bindgroup, &[]);
             //Use a slice for the buffer as the buffer could contain more than
             //one "set" of data.
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
@@ -275,13 +286,6 @@ impl State {
         Ok(())
     }
 
-    fn handle_key(&self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        match (code, is_pressed) {
-            (KeyCode::Escape, true) => event_loop.exit(),
-            _ => {}
-        }
-    }
-
     fn handle_mouse_moved(&mut self, position: PhysicalPosition<f64>) {
         let x_prop = position.x / f64::from(self.window.inner_size().width);
         let y_prop = position.y / f64::from(self.window.inner_size().height);
@@ -293,73 +297,87 @@ impl State {
                           };
         self.clear_color = clear_color;
     }
+}
 
-    fn update(&mut self) {
-        self.automata.update(&self.device, &self.queue, self.even_frame);
-        self.automata_renderer.update_texture(&self.device, &self.queue, self.even_frame);
+
+pub struct AutomataHandler {
+    automata: Automata,
+    automata_renderer: AutomataRenderer,
+    even_frame: bool,
+}
+
+impl AutomataHandler {
+    //Standard automata is a Conway automata now
+    pub fn new(gpu: &GPUState) -> Self {
+        let aut_width = 1024;
+        let aut_height = 1024;
+        let state = AutomataState::new(&gpu.device, aut_width, aut_height);
+        let states = vec![state];
+        let mut rules: Vec<AutomataRule> = vec![];
+        rules.push(AutomataRule::conway_rule(&states, 0, &gpu.device));
+        let automata = Automata {
+            states,
+            rules,
+        };
+
+        let automata_renderer = AutomataRenderer::new(&automata.states, &gpu.texture_bind_group_layout, aut_width, aut_height, &gpu.device, &gpu.queue);
+
+        return AutomataHandler {automata, automata_renderer, even_frame: true};
+    }
+
+    pub fn update(&mut self, gpu: &GPUState) {
+        let device = &gpu.device;
+        let queue = &gpu.queue;
+
+        self.automata.update(device, queue, self.even_frame);
+        self.automata_renderer.update_texture(device, queue, self.even_frame);
         self.even_frame = !self.even_frame;
+    }
+
+    fn temp_update_conway_prm(&mut self, gpu: &GPUState) {
+        let width = self.automata.states[0].width;
+        let height = self.automata.states[0].height;
+        let new_prm = vec![width, height, 30, 12, 13];
+        self.automata.rules[0].update_prm_bindgroup(new_prm, &gpu.queue);
     }
 }
 
-
-pub struct App {
-    state: Option<State>,
-    last_render_time: Instant,
+pub enum App {
+    Uninitialized,
+    Initialized(InitializedApp),
 }
-
 
 impl App {
     pub fn new() -> Self {
-        Self {
-            state: None,
-            last_render_time: Instant::now(),
-        }
+        return Self::Uninitialized;
     }
+
 }
 
+pub struct InitializedApp {
+    gpu_state: GPUState,
+    automata_handler: AutomataHandler,
+    last_render_time: Instant,
+}
 
-impl ApplicationHandler<State> for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        #[allow(unused_mut)]
-        let mut window_attributes = Window::default_attributes();
-
-        let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-        self.state = Some(pollster::block_on(State::new(window)).unwrap());
+impl InitializedApp {
+    fn update(&mut self) {
+        self.automata_handler.update(&self.gpu_state);
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _window_id: winit::window::WindowId,
-        event: WindowEvent,
-    ) {
-        let state = match &mut self.state {
-            Some(canvas) => canvas,
-            None => return,
-        };
-
+    pub fn window_event(&mut self, event: WindowEvent, event_loop: &ActiveEventLoop) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::Resized(size) => self.gpu_state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
                 let now = Instant::now();
                 let dt = now - self.last_render_time;
                 if dt.as_millis() >= 30 {
                     println!("{}", dt.as_millis());
-                    state.update();
+                    self.update();
                     self.last_render_time = now;
                 }
-                match state.render() {
-                    Ok(_) => {}
-                    // Reconfigure the surface if it's lost or outdated
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                        let size = state.window.inner_size();
-                        state.resize(size.width, size.height);
-                    }
-                    Err(e) => {
-                        log::error!("Unable to render {}", e);
-                    }
-                }
+                self.render_app();
             }
             WindowEvent::KeyboardInput {
                 event:
@@ -369,9 +387,70 @@ impl ApplicationHandler<State> for App {
                         ..
                     },
                 ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
-            WindowEvent::CursorMoved { device_id: _, position } => state.handle_mouse_moved(position),
+            } => self.handle_key(event_loop, code, key_state.is_pressed()),
+            WindowEvent::CursorMoved { device_id: _, position } => self.gpu_state.handle_mouse_moved(position),
             _ => {}
+        }
+    }
+
+    fn render_app(&mut self) {
+        let aut_texture = &self.automata_handler.automata_renderer.texture_bind_group;
+        match self.gpu_state.render(aut_texture) {
+            Ok(_) => {}
+            // Reconfigure the surface if it's lost or outdated
+            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                let size = self.gpu_state.window.inner_size();
+                self.gpu_state.resize(size.width, size.height);
+            }
+            Err(e) => {
+                log::error!("Unable to render {}", e);
+            }
+        }
+    }
+
+
+
+    fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+        match (code, is_pressed) {
+            (KeyCode::Escape, true) => event_loop.exit(),
+            (KeyCode::KeyU, true) => self.automata_handler.temp_update_conway_prm(&self.gpu_state),
+            _ => {}
+        }
+    }
+
+
+}
+
+impl ApplicationHandler<GPUState> for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        #[allow(unused_mut)]
+        if let App::Uninitialized = self {
+            let mut window_attributes = Window::default_attributes();
+            //Two unsafe unwraps here, but both crucial to program running at all
+            let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+            let gpu_state = pollster::block_on(GPUState::new(window)).unwrap();
+
+            let automata_handler = AutomataHandler::new(&gpu_state);
+
+            *self = App::Initialized(
+                        InitializedApp { 
+                            gpu_state, 
+                            automata_handler,
+                            last_render_time: Instant::now(),
+                        }
+                    )
+
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        if let App::Initialized(app) = self {
+            app.window_event(event, event_loop);
         }
     }
 }
