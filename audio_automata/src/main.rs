@@ -1,6 +1,7 @@
 pub mod automata;
 pub mod app;
 pub mod data;
+pub mod gpu_state;
 
 use crate::app::App;
 

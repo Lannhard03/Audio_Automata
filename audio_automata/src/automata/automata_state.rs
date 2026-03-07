@@ -8,7 +8,7 @@ pub struct AutomataState {
     pub work_group_size: u32, //Assume work groups are square
     pub automata_bindgroup_even: wgpu::BindGroup,
     pub automata_bindgroup_odd: wgpu::BindGroup,
-    pub automata_bindgroup_layout: wgpu::BindGroupLayout,
+
     pub even_buffer: wgpu::Buffer,
     pub odd_buffer: wgpu::Buffer,
 }
@@ -42,6 +42,7 @@ impl AutomataState {
                                 binding: 0,
                                 visibility: wgpu::ShaderStages::COMPUTE,
                                 ty: wgpu::BindingType::Buffer { 
+        
                                     ty: wgpu::BufferBindingType::Storage { read_only: false },
                                     has_dynamic_offset: false, //Maybe should be true?
                                     min_binding_size: None,
@@ -61,6 +62,7 @@ impl AutomataState {
                         ],
                         label: Some("compute_bind_group_layout"),
                     });
+
 
         let compute_bind_group_even = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -98,7 +100,7 @@ impl AutomataState {
             work_group_size: 16,
             automata_bindgroup_even: compute_bind_group_even,
             automata_bindgroup_odd: compute_bind_group_odd, 
-            automata_bindgroup_layout: compute_bind_group_layout,
+            //automata_bindgroup_layout: compute_bind_group_layout,
             even_buffer,
             odd_buffer,
         }

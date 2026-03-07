@@ -1,26 +1,32 @@
 use wgpu::{util::{BufferInitDescriptor, DeviceExt}};
 use crate::automata::automata_state::AutomataState;
+use crate::data::Texture;
 
-
-pub struct AutomataRenderer {
+pub struct AutomataTexturer {
     //automata: Vec<AutomataState>,
     //Render rules? Colors etc
     width: u32,
     height: u32,
     wg_size: u32,
-    pub texture_bind_group: wgpu::BindGroup,
+    //pub texture_bind_group: wgpu::BindGroup,
+    pub texture: Texture,
     //pub texture_bind_group_layout: wgpu::BindGroupLayout,
     pub compute_bindgroup_even: wgpu::BindGroup,
     pub compute_bindgroup_odd: wgpu::BindGroup,
     pub compute_pipeline: wgpu::ComputePipeline,
 }
 
-impl AutomataRenderer {
+impl AutomataTexturer {
     //State should be a list of states,
     //but then I need to understand buffer offsets
-    pub fn new(state: &Vec<AutomataState>, texture_bindgroup_layout: &wgpu::BindGroupLayout,
-               width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> AutomataRenderer {
+    pub fn new(state: &Vec<AutomataState>, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> AutomataTexturer {
 
+        let texture = match Texture::new(device, queue, width, height) {
+            Ok(tex) => tex,
+            Err(_) => panic!("Could not create texture"),
+        };
+
+        /*
         let texture_size = wgpu::Extent3d {
             width: width,
             height: height,
@@ -99,6 +105,7 @@ impl AutomataRenderer {
                 label: Some("diffuse_bind_group"),
             }
         );
+        */
 
         let rule_prm = &[width, height]; 
 
@@ -157,7 +164,7 @@ impl AutomataRenderer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
+                    resource: wgpu::BindingResource::TextureView(&texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -177,7 +184,7 @@ impl AutomataRenderer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
+                    resource: wgpu::BindingResource::TextureView(&texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -205,9 +212,10 @@ impl AutomataRenderer {
             cache: Default::default(),
         });
 
-        return  AutomataRenderer { 
-            texture_bind_group: diffuse_bind_group,
+        return  AutomataTexturer { 
+            //texture_bind_group: diffuse_bind_group,
             //texture_bind_group_layout,
+            texture,
             compute_bindgroup_even,
             compute_bindgroup_odd,
             compute_pipeline: pipeline,

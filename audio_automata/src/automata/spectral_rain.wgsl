@@ -21,24 +21,28 @@ fn main(
     let iwidth = i32(prm[0]);
     let iheight = i32(prm[1]);
 
-
-
     if (ix >= width || iy >= height) {
         return;
     }
+    let mid = iy*width + ix;
 
-    //The parameters are here set to 3, 12, 13. Meaning a "alive" cell with 2 or 3
-    //neighbours survivies, and a "dead" cell with 3 neighbours becomes alive
-    var neigh: f32 = 0;
+    var sum: f32 = 0;
     for (var dx: i32 = -1; dx <= 1; dx++) {
         for (var dy: i32 = -1; dy <= 1; dy++) {
             let nx = (i32(ix) + dx + iwidth) % iwidth;
-            let ny = (i32(iy) + dy + iheight) % iheight;
-            neigh += kernel[(dy+1)*3 + (dx +1)]*cells[iwidth*ny + nx];
+            let ny = clamp(i32(iy) + dy, 0, iheight-1);
+            sum += kernel[(dy+1)*3 + (dx +1)]*cells[iwidth*ny + nx];
         }
     }
 
-    next_cells[iy*width + ix] = f32(neigh == f32(prm[2])) 
-                              + f32(neigh == f32(prm[3])) 
-                              + f32(neigh == f32(prm[4]));
+    next_cells[mid] = sum;
+    if (iy == 0) {
+        if (ix % (width/10) == 0){
+            next_cells[mid] = 1;
+        } else {
+            next_cells[mid] = 0;
+        }
+    } 
+
 }
+
