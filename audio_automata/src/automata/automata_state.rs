@@ -6,9 +6,11 @@ pub struct AutomataState {
     pub width: u32,
     pub height: u32,
     pub work_group_size: u32, //Assume work groups are square
+    //Probably should have these bindgroups here?
     pub automata_bindgroup_even: wgpu::BindGroup,
     pub automata_bindgroup_odd: wgpu::BindGroup,
 
+    pub even_frame: bool,
     pub even_buffer: wgpu::Buffer,
     pub odd_buffer: wgpu::Buffer,
 }
@@ -98,6 +100,7 @@ impl AutomataState {
             width, 
             height,
             work_group_size: 16,
+            even_frame: false,
             automata_bindgroup_even: compute_bind_group_even,
             automata_bindgroup_odd: compute_bind_group_odd, 
             //automata_bindgroup_layout: compute_bind_group_layout,

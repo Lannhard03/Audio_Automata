@@ -1,6 +1,5 @@
-use std::{sync::Arc, time::{Instant}};
+use std::{sync::Arc};
 
-use image::imageops::FilterType::Gaussian;
 use wgpu::{SurfaceError, util::{DeviceExt}};
 
 use winit::{

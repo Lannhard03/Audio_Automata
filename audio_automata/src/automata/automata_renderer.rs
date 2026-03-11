@@ -14,6 +14,9 @@ pub struct AutomataTexturer {
     pub compute_bindgroup_even: wgpu::BindGroup,
     pub compute_bindgroup_odd: wgpu::BindGroup,
     pub compute_pipeline: wgpu::ComputePipeline,
+
+    //Temporary as even_frame is no longer global
+    even_frame: bool,
 }
 
 impl AutomataTexturer {
@@ -222,10 +225,11 @@ impl AutomataTexturer {
             width: state[0].width,
             height: state[0].height,
             wg_size: state[0].work_group_size,
+            even_frame: true,
         }
     }
 
-    pub fn update_texture(&self, device: &wgpu::Device, queue: &wgpu::Queue, even_frame: bool) {
+    pub fn update_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let wg_size = self.wg_size;
         let num_dispatches_x = self.width.div_ceil(wg_size) as u32;
         let num_dispatches_y = self.height.div_ceil(wg_size) as u32;
@@ -236,11 +240,12 @@ impl AutomataTexturer {
         {
             let mut compute_pass = encoder.begin_compute_pass(&Default::default());
             compute_pass.set_pipeline(&self.compute_pipeline);
-            if even_frame {
+            if self.even_frame {
                 compute_pass.set_bind_group(0, &self.compute_bindgroup_even, &[]);
             } else {
                 compute_pass.set_bind_group(0, &self.compute_bindgroup_odd, &[]);
             }
+            self.even_frame = !self.even_frame;
             compute_pass.dispatch_workgroups(num_dispatches_x, num_dispatches_y, 1);
         }
         queue.submit([encoder.finish()]);

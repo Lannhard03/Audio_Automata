@@ -20,6 +20,7 @@ fn main(
     let height = prm[1];
     let iwidth = i32(prm[0]);
     let iheight = i32(prm[1]);
+    let time = prm[2];
 
     if (ix >= width || iy >= height) {
         return;
@@ -27,17 +28,17 @@ fn main(
     let mid = iy*width + ix;
 
     var sum: f32 = 0;
-    for (var dx: i32 = -1; dx <= 1; dx++) {
-        for (var dy: i32 = -1; dy <= 1; dy++) {
+    for (var dx: i32 = -2; dx <= 2; dx++) {
+        for (var dy: i32 = -2; dy <= 2; dy++) {
             let nx = (i32(ix) + dx + iwidth) % iwidth;
             let ny = clamp(i32(iy) + dy, 0, iheight-1);
-            sum += kernel[(dy+1)*3 + (dx +1)]*cells[iwidth*ny + nx];
+            sum += kernel[(dy+2)*5 + (dx + 2)]*cells[iwidth*ny + nx];
         }
     }
 
     next_cells[mid] = sum;
     if (iy == 0) {
-        if (ix % (width/10) == 0){
+        if ((ix + time) % (width/10) == 0){
             next_cells[mid] = 1;
         } else {
             next_cells[mid] = 0;
@@ -45,4 +46,4 @@ fn main(
     } 
 
 }
-
+     

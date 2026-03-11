@@ -2,53 +2,80 @@ pub mod automata_rule;
 pub mod automata_state;
 pub mod automata_renderer;
 
+use crate::app::UpdateInfo;
+use crate::automata::automata_renderer::AutomataTexturer;
 use crate::gpu_state::GPUState;
 use crate::automata::automata_state::AutomataState;
-use crate::automata::automata_rule::AutomataInteraction;
+use crate::automata::automata_rule::{AutomataInteraction, ConwayInteraction, RainInteraction};
+
+pub struct AutomataHandler {
+    ecosystem: Ecosystem,
+    automata_renderer: AutomataTexturer,
+    update_info: UpdateInfo,
+}
+
+impl AutomataHandler {
+    //Standard automata is a Conway automata now
+    pub fn new(gpu: &GPUState) -> Self {
+        let width = 1024;
+        let height = 1024;
+        let ecosystem = Ecosystem::new_conway_automata(width, height, gpu);
+        //let ecosystem = Ecosystem::new_spectral_rain_aut(width, height, gpu);
+        let states = ecosystem.get_state_ref();
+        let automata_renderer = AutomataTexturer::new(states, width as u32,
+                                                      height as u32, &gpu.device, &gpu.queue);
+        let update_info = UpdateInfo {frame: 0, etc: 0, key_presses: Vec::from([])}; //Temp values for now
+
+        return AutomataHandler {ecosystem, automata_renderer, update_info};
+    }
+
+    pub fn update(&mut self, gpu: &GPUState) {
+        let device = &gpu.device;
+        let queue = &gpu.queue;
+
+        self.ecosystem.update(&self.update_info, device, queue);
+        self.automata_renderer.update_texture(device, queue);
+
+        self.update_info.key_presses.clear();
+        self.update_info.frame += 1;
+    }
+
+}
 
 
 pub struct Ecosystem {
     states: Vec<AutomataState>,
-    rules: Vec<AutomataInteraction>,
+    interactions: Vec<Box<dyn AutomataInteraction>>,
 }
-
-
-//Automata update cycle:
-//Automata owns a vector of automata states and rules, 
-//aswell as a list of which automata interact for each rule
-//When updating we go through the list and give the rule the corresponding
-//states and run it.
-//
-//After these updates, the automata are rendered in some similair way.
 
 impl Ecosystem {
     pub fn get_state_ref(&self) -> &Vec<AutomataState> {
         return &self.states;
     }
-    pub fn get_rule_ref(&mut self) -> &mut Vec<AutomataInteraction> {
-        return &mut self.rules;
-    }
 
-
-    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, even_frame: bool) {
-        for state in &self.states {
-            let wg_size = state.work_group_size;
-            let num_disp_x = state.width.div_ceil(wg_size) as u32;
-            let num_disp_y = state.height.div_ceil(wg_size) as u32;
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Compute Encoder"),
-            });
-
-            {
-                let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-
-                for rule in self.rules.iter() {
-                    rule.apply_rule(even_frame, &self.states, &mut compute_pass, num_disp_x, num_disp_y);
-
-                }
-            }
-            queue.submit([encoder.finish()]);
+    pub fn update(&mut self, update_info: &UpdateInfo, device: &wgpu::Device, queue: &wgpu::Queue) {
+        for state in self.states.iter_mut() {
+            state.even_frame = !state.even_frame;
         }
+
+        for interaction in self.interactions.iter_mut() {
+            interaction.update_prm(update_info, queue);
+        }
+
+        //Do this here so that a rules are applied in the same compute pass,
+        //don't actually know if this is a good or bad idea?
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Compute Encoder"),
+        });
+
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&Default::default());
+
+            for interaction in self.interactions.iter() {
+                interaction.apply_interaction(&self.states, &mut compute_pass);
+            }
+        }
+        queue.submit([encoder.finish()]);
 
     }
 
@@ -86,31 +113,37 @@ impl Ecosystem {
         let bind_group_layout = Self::std_bindgroup_layout(gpu);
         let state = AutomataState::new(&gpu.device, width, height);
         let states = vec![state];
-        let mut rules: Vec<AutomataInteraction> = vec![];
-        let conway_rule = AutomataInteraction::conway_rule(width, height,
-                                               bind_group_layout, &gpu.device);
 
-        rules.push(conway_rule);
+        let mut interactions: Vec<Box<dyn AutomataInteraction>> = vec![];
+        let state_indicies: Vec<usize> = vec![0];
+        let conway_interaction = Box::new(ConwayInteraction::new(width, height, state_indicies, 
+                                   bind_group_layout, &gpu.device));
+
+        interactions.push(conway_interaction);
 
         Ecosystem {
             states,
-            rules,
+            interactions,
         }
     }
 
+    
     pub fn new_spectral_rain_aut(width: u32, height: u32, gpu: &GPUState) -> Self {
         let bind_group_layout = Self::std_bindgroup_layout(gpu);
         let state = AutomataState::new(&gpu.device, width, height);
         let states = vec![state];
-        let mut rules: Vec<AutomataInteraction> = vec![];
-        let rule = AutomataInteraction::spectral_rain_rule(width, height,
-                                               bind_group_layout, &gpu.device);
 
-        rules.push(rule);
+        let mut interactions: Vec<Box<dyn AutomataInteraction>> = vec![];
+        let state_indicies: Vec<usize> = vec![0];
+        let rain_interaction = Box::new(RainInteraction::new(width, height, state_indicies, 
+                                   bind_group_layout, &gpu.device));
+
+        interactions.push(rain_interaction);
 
         Ecosystem {
             states,
-            rules,
+            interactions,
         }
     }
+    
 }

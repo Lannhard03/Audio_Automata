@@ -1,21 +1,30 @@
 use std::{sync::Arc, time::{Instant}};
 
-use wgpu::{SurfaceError, util::{DeviceExt}};
-
 use winit::{
-    application::ApplicationHandler, dpi::{PhysicalPosition, PhysicalSize}, event::*, event_loop::ActiveEventLoop, keyboard::{KeyCode, PhysicalKey}, window::Window
+    application::ApplicationHandler,
+    event::*, 
+    event_loop::ActiveEventLoop, 
+    keyboard::{KeyCode, PhysicalKey}, 
+    window::Window
 };
 
 use crate::{
     automata::{
         Ecosystem, automata_renderer::AutomataTexturer
-    }, data::Vertex, gpu_state::{GPUState, Renderer}
+    }, 
+    gpu_state::{GPUState, Renderer},
 };
+
+pub struct UpdateInfo {
+    pub frame: u32,
+    pub key_presses: Vec<KeyCode>, 
+    pub etc: u32, //More fields here
+}
 
 pub struct AutomataHandler {
     ecosystem: Ecosystem,
     automata_renderer: AutomataTexturer,
-    even_frame: bool,
+    update_info: UpdateInfo,
 }
 
 impl AutomataHandler {
@@ -23,31 +32,27 @@ impl AutomataHandler {
     pub fn new(gpu: &GPUState) -> Self {
         let width = 1024;
         let height = 1024;
-        let ecosystem = Ecosystem::new_conway_automata(width, height, gpu);
-        //let ecosystem = Ecosystem::new_spectral_rain_aut(width, height, gpu);
+        //let ecosystem = Ecosystem::new_conway_automata(width, height, gpu);
+        let ecosystem = Ecosystem::new_spectral_rain_aut(width, height, gpu);
         let states = ecosystem.get_state_ref();
         let automata_renderer = AutomataTexturer::new(states, width as u32,
                                                       height as u32, &gpu.device, &gpu.queue);
+        let update_info = UpdateInfo {frame: 0, etc: 0, key_presses: Vec::from([])}; //Temp values for now
 
-        return AutomataHandler {ecosystem, automata_renderer, even_frame: true};
+        return AutomataHandler {ecosystem, automata_renderer, update_info};
     }
 
     pub fn update(&mut self, gpu: &GPUState) {
         let device = &gpu.device;
         let queue = &gpu.queue;
 
-        self.ecosystem.update(device, queue, self.even_frame);
-        self.automata_renderer.update_texture(device, queue, self.even_frame);
-        self.even_frame = !self.even_frame;
+        self.ecosystem.update(&self.update_info, device, queue);
+        self.automata_renderer.update_texture(device, queue);
+
+        self.update_info.key_presses.clear();
+        self.update_info.frame += 1;
     }
 
-    fn temp_update_conway_prm(&mut self, gpu: &GPUState) {
-        let states = self.ecosystem.get_state_ref();
-        let width = states[0].width;
-        let height = states[0].height;
-        let new_prm = vec![width, height, 30, 12, 13];
-        self.ecosystem.get_rule_ref()[0].update_prm_bindgroup(new_prm, &gpu.queue);
-    }
 }
 
 pub enum App {
@@ -123,8 +128,8 @@ impl InitializedApp {
     fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
         match (code, is_pressed) {
             (KeyCode::Escape, true) => event_loop.exit(),
-            (KeyCode::KeyU, true) => self.automata_handler.temp_update_conway_prm(&self.gpu_state),
-            _ => {}
+            (code, true) => self.automata_handler.update_info.key_presses.push(code),
+            _ => (),
         }
     }
 
