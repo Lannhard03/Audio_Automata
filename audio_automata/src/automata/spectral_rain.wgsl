@@ -36,7 +36,7 @@ fn main(
         }
     }
 
-    next_cells[mid] = sum;
+    next_cells[mid] = clamp(sum, 0, 1);
     if (iy == 0) {
         if ((ix + time) % (width/10) == 0){
             next_cells[mid] = 1;

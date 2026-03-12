@@ -200,15 +200,9 @@ pub struct RainInteraction {
 
 impl AutomataInteraction for RainInteraction {
     fn update_prm(&mut self, info: &UpdateInfo, queue: &wgpu::Queue) {
-        self.prm[2] += 1; //Increase time by one
-        
-        for keypress in info.key_presses.iter() {
-            if *keypress == KeyCode::KeyU {
-
-                //Do we nned to update bindgroup also?
-                //self.ecosystem.get_interaction_ref()[0].update_prm_bindgroup(new_prm, &gpu.queue);
-            }
-        }
+        let new_prm = (100.0*(f32::sin(6.28*(info.frame as f32)/120.0) + 1.0)) as u32;
+        self.prm[2] = new_prm;
+        //println!("Current frame is {}. Prm value is {}", info.frame, new_prm);
         queue.write_buffer(&self.prm_buffer, 0, bytemuck::cast_slice(&self.prm));
     }
 
@@ -224,8 +218,8 @@ impl RainInteraction {
 
         let prm = vec![width, height, 0];
 
-        let kernel = vec![0.0, 0.1, 0.8, 0.1, 0.0,
-                          0.0, 0.0, 0.0, 0.0, 0.0,
+        let kernel = vec![0.1, 0.1, 0.5, 0.1, 0.1,
+                          0.0, 0.0, 0.1, 0.0, 0.0,
                           0.0, 0.0, 0.0, 0.0, 0.0,
                           0.0, 0.0, 0.0, 0.0, 0.0,
                           0.0, 0.0, 0.0, 0.0, 0.0];
