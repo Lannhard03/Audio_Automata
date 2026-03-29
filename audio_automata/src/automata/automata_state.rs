@@ -16,12 +16,17 @@ pub struct AutomataState {
 }
 
 impl AutomataState {
-    pub fn new(device: &wgpu::Device, width: u32, height: u32) -> AutomataState {
+    pub fn new(device: &wgpu::Device, width: u32, height: u32, filled: bool) -> AutomataState {
         let mut rng = rand::rng();
-        let input_data: Vec<f32> = (0..(height*width))
-                                   .map(|_x| rng.random_range(0..2) as f32).collect(); 
-                                    //faster to use a uniform dist,
-                                    //but doesnt matter
+        let input_data: Vec<f32>;
+        if filled {
+            input_data = (0..(height*width))
+                .map(|_x| rng.random_range(0..2) as f32).collect(); 
+            //faster to use a uniform dist,
+            //but doesnt matter
+        } else {
+            input_data = vec![0.0; (height*width) as usize];
+        }
 
 
         let even_buffer = device.create_buffer_init(&BufferInitDescriptor {

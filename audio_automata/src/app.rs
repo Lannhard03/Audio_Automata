@@ -10,7 +10,7 @@ use winit::{
 
 use crate::{
     automata::{
-        Ecosystem, automata_renderer::AutomataTexturer
+        Ecosystem, automata_renderer::{AnnihilationAutomataTexturer, AutomataTexturer}
     }, 
     gpu_state::{GPUState, Renderer},
 };
@@ -23,7 +23,7 @@ pub struct UpdateInfo {
 
 pub struct AutomataHandler {
     ecosystem: Ecosystem,
-    automata_renderer: AutomataTexturer,
+    automata_renderer: Box<dyn AutomataTexturer>,
     update_info: UpdateInfo,
 }
 
@@ -33,11 +33,14 @@ impl AutomataHandler {
         let width = 1024;
         let height = 1024;
         //let ecosystem = Ecosystem::new_conway_automata(width, height, gpu);
-        let ecosystem = Ecosystem::new_spectral_rain_aut(width, height, gpu);
+        //let ecosystem = Ecosystem::new_spectral_rain_aut(width, height, gpu);
+        let ecosystem = Ecosystem::new_annihilation_aut(width, height, gpu);
         let states = ecosystem.get_state_ref();
-        let automata_renderer = AutomataTexturer::new(states, width as u32,
-                                                      height as u32, &gpu.device, &gpu.queue);
-        let update_info = UpdateInfo {frame: 0, etc: 0, key_presses: Vec::from([])}; //Temp values for now
+        //let automata_renderer = Box::new(BasicAutomataTexturer::new(&states[2], width as u32,
+        //                                              height as u32, &gpu.device, &gpu.queue));
+        let automata_renderer = Box::new(AnnihilationAutomataTexturer::new(states, width as u32,
+                                                      height as u32, &gpu.device, &gpu.queue));
+        let update_info = UpdateInfo {frame: 0, etc: 0, key_presses: Vec::from([])};
 
         return AutomataHandler {ecosystem, automata_renderer, update_info};
     }
@@ -109,7 +112,8 @@ impl InitializedApp {
     }
 
     fn render_app(&mut self) {
-        let aut_texture = &self.automata_handler.automata_renderer.texture.texture_bind_group;
+        let aut_texture = &self.automata_handler.automata_renderer.get_data().
+                                texture.texture_bind_group;
         match self.renderer.render(&self.gpu_state, aut_texture) {
             Ok(_) => {}
             // Reconfigure the surface if it's lost or outdated
@@ -144,9 +148,10 @@ impl ApplicationHandler<GPUState> for App {
             //Two unsafe unwraps here, but both crucial to program running at all
             let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
             let gpu_state = pollster::block_on(GPUState::new(window)).unwrap();
-            let automata_handler = AutomataHandler::new(&gpu_state);
+            let mut automata_handler = AutomataHandler::new(&gpu_state);
 
-            let tex_bindgroup_layout = &automata_handler.automata_renderer.texture.texture_bind_group_layout;          
+            let tex_bindgroup_layout = &automata_handler.automata_renderer.get_data().
+                                        texture.texture_bind_group_layout;          
             let renderer = Renderer::new(&gpu_state, tex_bindgroup_layout);
 
             *self = App::Initialized(

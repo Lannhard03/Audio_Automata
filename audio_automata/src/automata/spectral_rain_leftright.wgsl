@@ -30,15 +30,15 @@ fn main(
     var sum: f32 = 0;
     for (var dx: i32 = -2; dx <= 2; dx++) {
         for (var dy: i32 = -2; dy <= 2; dy++) {
-            let nx = (i32(ix) + dx + iwidth) % iwidth;
-            let ny = clamp(i32(iy) + dy, 0, iheight-1);
+            let ny = (i32(iy) + dy + iheight) % iheight;
+            let nx = clamp(i32(ix) + dx, 0, iwidth-1);
             sum += kernel[(dy+2)*5 + (dx + 2)]*cells[iwidth*ny + nx];
         }
     }
 
     next_cells[mid] = clamp(sum, 0, 1);
-    if (iy == 0) {
-        if ((ix + time) % (width/10) == 0){
+    if (ix == 0 && iy > height/3 && iy < 2*height/3) {
+        if ((iy + time) % (height/10) == 0){
             next_cells[mid] = 1;
         } else {
             next_cells[mid] = 0;
